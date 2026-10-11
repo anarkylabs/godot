@@ -84,6 +84,10 @@ String RenderingDeviceGraph::_usage_to_string(ResourceUsage p_usage) {
 			return "Attachment Color Read Write";
 		case RESOURCE_USAGE_ATTACHMENT_DEPTH_STENCIL_READ_WRITE:
 			return "Attachment Depth Stencil Read Write";
+		case RESOURCE_USAGE_EXTERNAL_ACQUIRE:
+			return "External Acquire";
+		case RESOURCE_USAGE_EXTERNAL_RELEASE:
+			return "External Release";
 		case RESOURCE_USAGE_GENERAL:
 			return "General";
 		default:
@@ -114,6 +118,8 @@ bool RenderingDeviceGraph::_is_write_usage(ResourceUsage p_usage) {
 		case RESOURCE_USAGE_STORAGE_IMAGE_READ_WRITE:
 		case RESOURCE_USAGE_ATTACHMENT_COLOR_READ_WRITE:
 		case RESOURCE_USAGE_ATTACHMENT_DEPTH_STENCIL_READ_WRITE:
+		case RESOURCE_USAGE_EXTERNAL_ACQUIRE:
+		case RESOURCE_USAGE_EXTERNAL_RELEASE:
 		case RESOURCE_USAGE_GENERAL:
 		case RESOURCE_USAGE_ACCELERATION_STRUCTURE_READ_WRITE:
 			return true;
@@ -133,6 +139,7 @@ RDD::TextureLayout RenderingDeviceGraph::_usage_to_image_layout(ResourceUsage p_
 			return RDD::TEXTURE_LAYOUT_RESOLVE_SRC_OPTIMAL;
 		case RESOURCE_USAGE_RESOLVE_TO:
 			return RDD::TEXTURE_LAYOUT_RESOLVE_DST_OPTIMAL;
+		case RESOURCE_USAGE_EXTERNAL_ACQUIRE:
 		case RESOURCE_USAGE_TEXTURE_SAMPLE:
 			return RDD::TEXTURE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 		case RESOURCE_USAGE_STORAGE_IMAGE_READ:
@@ -146,6 +153,7 @@ RDD::TextureLayout RenderingDeviceGraph::_usage_to_image_layout(ResourceUsage p_
 			return RDD::TEXTURE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL;
 		case RESOURCE_USAGE_ATTACHMENT_FRAGMENT_DENSITY_MAP_READ:
 			return RDD::TEXTURE_LAYOUT_FRAGMENT_DENSITY_MAP_ATTACHMENT_OPTIMAL;
+		case RESOURCE_USAGE_EXTERNAL_RELEASE:
 		case RESOURCE_USAGE_GENERAL:
 			return RDD::TEXTURE_LAYOUT_GENERAL;
 		case RESOURCE_USAGE_NONE:
@@ -161,6 +169,7 @@ RDD::BarrierAccessBits RenderingDeviceGraph::_usage_to_access_bits(ResourceUsage
 	return RDD::BarrierAccessBits(RDD::BARRIER_ACCESS_MEMORY_READ_BIT | RDD::BARRIER_ACCESS_MEMORY_WRITE_BIT);
 #else
 	switch (p_usage) {
+		case RESOURCE_USAGE_EXTERNAL_RELEASE:
 		case RESOURCE_USAGE_NONE:
 			return RDD::BarrierAccessBits(0);
 		case RESOURCE_USAGE_COPY_FROM:
@@ -180,6 +189,7 @@ RDD::BarrierAccessBits RenderingDeviceGraph::_usage_to_access_bits(ResourceUsage
 		case RESOURCE_USAGE_STORAGE_BUFFER_READ:
 		case RESOURCE_USAGE_STORAGE_IMAGE_READ:
 		case RESOURCE_USAGE_TEXTURE_BUFFER_READ:
+		case RESOURCE_USAGE_EXTERNAL_ACQUIRE:
 		case RESOURCE_USAGE_TEXTURE_SAMPLE:
 			return RDD::BARRIER_ACCESS_SHADER_READ_BIT;
 		case RESOURCE_USAGE_TEXTURE_BUFFER_READ_WRITE:
@@ -563,7 +573,8 @@ void RenderingDeviceGraph::_add_command_to_graph(ResourceTracker **p_resource_tr
 		ResourceTracker *search_tracker = resource_has_parent ? resource_tracker->parent : resource_tracker;
 		bool different_usage = resource_tracker->usage != new_resource_usage;
 		bool write_usage_after_write = (write_usage && search_tracker->write_command_or_list_index >= 0);
-		if (different_usage || write_usage_after_write) {
+		const bool external_transfer = new_resource_usage == RESOURCE_USAGE_EXTERNAL_ACQUIRE || new_resource_usage == RESOURCE_USAGE_EXTERNAL_RELEASE;
+		if (!external_transfer && (different_usage || write_usage_after_write)) {
 			// A barrier must be pushed if the usage is different of it's a write usage and there was already a command that wrote to this resource previously.
 			if (resource_tracker->texture_driver_id.id != 0) {
 				if (resource_tracker->usage_access.is_empty()) {
@@ -1108,6 +1119,14 @@ void RenderingDeviceGraph::_run_render_commands(int32_t p_level, const RecordedC
 					driver->command_copy_buffer(r_command_buffer, command_buffer_copies[j].source, buffer_update_command->destination, command_buffer_copies[j].region);
 				}
 			} break;
+			case RecordedCommand::TYPE_TEXTURE_EXTERNAL_TRANSFER: {
+				const RecordedTextureExternalTransferCommand *texture_external_transfer_command = reinterpret_cast<const RecordedTextureExternalTransferCommand *>(command);
+				if (texture_external_transfer_command->acquire) {
+					driver->command_texture_external_acquire(r_command_buffer, texture_external_transfer_command->texture);
+				} else {
+					driver->command_texture_external_release(r_command_buffer, texture_external_transfer_command->texture);
+				}
+			} break;
 			case RecordedCommand::TYPE_DRIVER_CALLBACK: {
 				const RecordedDriverCallbackCommand *driver_callback_command = reinterpret_cast<const RecordedDriverCallbackCommand *>(command);
 				driver_callback_command->callback(driver, r_command_buffer, driver_callback_command->userdata);
@@ -1286,6 +1305,7 @@ void RenderingDeviceGraph::_run_label_command_change(RDD::CommandBufferID p_comm
 					case RecordedCommand::TYPE_DRAW_LIST: {
 						draw_commands = true;
 					} break;
+					case RecordedCommand::TYPE_TEXTURE_EXTERNAL_TRANSFER:
 					case RecordedCommand::TYPE_DRIVER_CALLBACK: {
 						custom_commands = true;
 					} break;
@@ -1469,6 +1489,10 @@ void RenderingDeviceGraph::_print_render_commands(const RecordedCommandSort *p_s
 			case RecordedCommand::TYPE_BUFFER_UPDATE: {
 				const RecordedBufferUpdateCommand *buffer_update_command = reinterpret_cast<const RecordedBufferUpdateCommand *>(command);
 				print_line(command_index, "LEVEL", command_level, "BUFFER UPDATE DESTINATION", itos(buffer_update_command->destination.id), "COPIES", buffer_update_command->buffer_copies_count);
+			} break;
+			case RecordedCommand::TYPE_TEXTURE_EXTERNAL_TRANSFER: {
+				const RecordedTextureExternalTransferCommand *texture_external_transfer_command = reinterpret_cast<const RecordedTextureExternalTransferCommand *>(command);
+				print_line(command_index, "LEVEL", command_level, texture_external_transfer_command->acquire ? "EXTERNAL ACQUIRE" : "EXTERNAL RELEASE", itos(texture_external_transfer_command->texture.id));
 			} break;
 			case RecordedCommand::TYPE_DRIVER_CALLBACK: {
 				print_line(command_index, "LEVEL", command_level, "DRIVER CALLBACK");
@@ -1771,6 +1795,7 @@ void RenderingDeviceGraph::begin() {
 	command_label_count = 0;
 	command_timestamp_index = -1;
 	command_synchronization_index = -1;
+	command_external_transfer_index = -1;
 	command_synchronization_pending = false;
 	command_label_index = -1;
 	frames[frame].secondary_command_buffers_used = 0;
@@ -1917,6 +1942,22 @@ void RenderingDeviceGraph::add_buffer_update(RDD::BufferID p_dst, ResourceTracke
 
 	ResourceUsage buffer_usage = RESOURCE_USAGE_COPY_TO;
 	_add_command_to_graph(&p_dst_tracker, &buffer_usage, 1, command_index, command);
+}
+
+void RenderingDeviceGraph::add_texture_external_transfer(ResourceTracker *p_tracker, bool p_acquire) {
+	int32_t command_index;
+	RecordedTextureExternalTransferCommand *command = static_cast<RecordedTextureExternalTransferCommand *>(_allocate_command(sizeof(RecordedTextureExternalTransferCommand), command_index));
+	command->type = RecordedCommand::TYPE_TEXTURE_EXTERNAL_TRANSFER;
+	command->texture = p_tracker->texture_driver_id;
+	command->acquire = p_acquire;
+	command->self_stages = RDD::PIPELINE_STAGE_ALL_COMMANDS_BIT;
+	ResourceUsage usage = p_acquire ? RESOURCE_USAGE_EXTERNAL_ACQUIRE : RESOURCE_USAGE_EXTERNAL_RELEASE;
+	_add_command_to_graph(&p_tracker, &usage, 1, command_index, command);
+	// Imports of one buffer have separate trackers, so order their transfers explicitly.
+	if (command_external_transfer_index >= 0) {
+		_add_adjacent_command(command_external_transfer_index, command_index, command);
+	}
+	command_external_transfer_index = command_index;
 }
 
 void RenderingDeviceGraph::add_driver_callback(RDD::DriverCallback p_callback, void *p_userdata, VectorView<ResourceTracker *> p_trackers, VectorView<RenderingDeviceGraph::ResourceUsage> p_usages) {
@@ -2662,6 +2703,7 @@ void RenderingDeviceGraph::end(bool p_reorder_commands, bool p_full_barriers, RD
 			2, // TYPE_TEXTURE_UPDATE
 			2, // TYPE_CAPTURE_TIMESTAMP
 			5, // TYPE_DRIVER_CALLBACK
+			5, // TYPE_TEXTURE_EXTERNAL_TRANSFER
 		};
 		static_assert(std_size(PriorityTable) == RecordedCommand::TYPE_MAX, "PriorityTable must have one entry per RecordedCommand::Type");
 
