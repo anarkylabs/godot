@@ -387,6 +387,12 @@ public:
 	virtual Error command_queue_execute_and_present(CommandQueueID p_cmd_queue, VectorView<SemaphoreID> p_wait_semaphores, VectorView<CommandBufferID> p_cmd_buffers, VectorView<SemaphoreID> p_cmd_semaphores, FenceID p_cmd_fence, VectorView<SwapChainID> p_swap_chains) override final;
 	virtual void command_queue_free(CommandQueueID p_cmd_queue) override final;
 
+	// Holds the lock the driver's own submits take on a device queue, for a
+	// caller that uses the queue outside the driver: the OpenXR runtime submits
+	// to the queue it was given during some of its calls.
+	void queue_lock(uint32_t p_queue_family, uint32_t p_queue_index);
+	void queue_unlock(uint32_t p_queue_family, uint32_t p_queue_index);
+
 private:
 	// ----- POOL -----
 

@@ -180,6 +180,25 @@ void OpenXRAPI::OpenXRSwapChainInfo::free() {
 	}
 }
 
+// Holds the graphics queue for one OpenXR call that the graphics binding
+// requires to be externally synchronized with the renderer's use of it.
+class OpenXRQueueLock {
+	OpenXRGraphicsExtensionWrapper *extension = nullptr;
+
+public:
+	explicit OpenXRQueueLock(OpenXRAPI *p_openxr_api) :
+			extension(p_openxr_api ? p_openxr_api->get_graphics_extension() : nullptr) {
+		if (extension) {
+			extension->lock_queue();
+		}
+	}
+	~OpenXRQueueLock() {
+		if (extension) {
+			extension->unlock_queue();
+		}
+	}
+};
+
 bool OpenXRAPI::OpenXRSwapChainInfo::acquire(bool &p_should_render) {
 	GodotProfileZone("OpenXR: acquire swapchain");
 	ERR_FAIL_COND_V(image_acquired, true); // This was not released when it should be, error out and reuse...
@@ -195,7 +214,10 @@ bool OpenXRAPI::OpenXRSwapChainInfo::acquire(bool &p_should_render) {
 			nullptr // next
 		};
 
-		result = openxr_api->xrAcquireSwapchainImage(swapchain, &swapchain_image_acquire_info, &image_index);
+		{
+			OpenXRQueueLock queue_lock(openxr_api);
+			result = openxr_api->xrAcquireSwapchainImage(swapchain, &swapchain_image_acquire_info, &image_index);
+		}
 		if (!XR_UNQUALIFIED_SUCCESS(result)) {
 			// Make sure end_frame knows we need to submit an empty frame
 			p_should_render = false;
@@ -264,7 +286,11 @@ bool OpenXRAPI::OpenXRSwapChainInfo::release() {
 		XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO, // type
 		nullptr // next
 	};
-	XrResult result = openxr_api->xrReleaseSwapchainImage(swapchain, &swapchain_image_release_info);
+	XrResult result;
+	{
+		OpenXRQueueLock queue_lock(openxr_api);
+		result = openxr_api->xrReleaseSwapchainImage(swapchain, &swapchain_image_release_info);
+	}
 	if (XR_FAILED(result)) {
 		print_line("OpenXR: failed to release swapchain image! [", openxr_api->get_error_string(result), "]");
 		return false;
@@ -2499,7 +2525,10 @@ void OpenXRAPI::pre_render() {
 		XR_TYPE_FRAME_BEGIN_INFO, // type
 		nullptr // next
 	};
-	result = xrBeginFrame(session, &frame_begin_info);
+	{
+		OpenXRQueueLock queue_lock(this);
+		result = xrBeginFrame(session, &frame_begin_info);
+	}
 	if (XR_FAILED(result)) {
 		print_line("OpenXR: failed to begin frame [", get_error_string(result), "]");
 		return;
@@ -2701,7 +2730,10 @@ void OpenXRAPI::end_frame() {
 			0, // layerCount
 			nullptr // layers
 		};
-		result = xrEndFrame(session, &frame_end_info);
+		{
+			OpenXRQueueLock queue_lock(this);
+			result = xrEndFrame(session, &frame_end_info);
+		}
 		if (XR_FAILED(result)) {
 			print_line("OpenXR: rendering skipped and failed to end frame! [", get_error_string(result), "]");
 			return;
@@ -2809,7 +2841,10 @@ void OpenXRAPI::end_frame() {
 		static_cast<uint32_t>(layers_list.size()), // layerCount
 		layers_list.ptr() // layers
 	};
-	result = xrEndFrame(session, &frame_end_info);
+	{
+		OpenXRQueueLock queue_lock(this);
+		result = xrEndFrame(session, &frame_end_info);
+	}
 	if (XR_FAILED(result)) {
 		print_line("OpenXR: failed to end frame! [", get_error_string(result), "]");
 		return;

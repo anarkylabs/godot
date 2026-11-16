@@ -3362,6 +3362,18 @@ Error RenderingDeviceDriverVulkan::command_queue_execute_and_present(CommandQueu
 	return OK;
 }
 
+void RenderingDeviceDriverVulkan::queue_lock(uint32_t p_queue_family, uint32_t p_queue_index) {
+	ERR_FAIL_UNSIGNED_INDEX(p_queue_family, queue_families.size());
+	ERR_FAIL_UNSIGNED_INDEX(p_queue_index, queue_families[p_queue_family].size());
+	queue_families[p_queue_family][p_queue_index].submit_mutex.lock();
+}
+
+void RenderingDeviceDriverVulkan::queue_unlock(uint32_t p_queue_family, uint32_t p_queue_index) {
+	ERR_FAIL_UNSIGNED_INDEX(p_queue_family, queue_families.size());
+	ERR_FAIL_UNSIGNED_INDEX(p_queue_index, queue_families[p_queue_family].size());
+	queue_families[p_queue_family][p_queue_index].submit_mutex.unlock();
+}
+
 void RenderingDeviceDriverVulkan::command_queue_free(CommandQueueID p_cmd_queue) {
 	DEV_ASSERT(p_cmd_queue);
 

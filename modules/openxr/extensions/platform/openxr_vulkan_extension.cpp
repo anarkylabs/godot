@@ -34,6 +34,7 @@
 #include "../openxr_fb_foveation_extension.h"
 
 #include "core/string/print_string.h"
+#include "drivers/vulkan/rendering_device_driver_vulkan.h"
 #include "servers/rendering/rendering_device.h"
 #include "servers/rendering/rendering_server.h"
 
@@ -199,6 +200,29 @@ bool OpenXRVulkanExtension::create_vulkan_device(const VkDeviceCreateInfo *p_dev
 void OpenXRVulkanExtension::set_direct_queue_family_and_index(uint32_t p_queue_family_index, uint32_t p_queue_index) {
 	vulkan_queue_family_index = p_queue_family_index;
 	vulkan_queue_index = p_queue_index;
+}
+
+// XR_KHR_vulkan_enable2: the queue in the graphics binding must be externally
+// synchronized during xrBeginFrame, xrEndFrame, xrAcquireSwapchainImage and
+// xrReleaseSwapchainImage. Threads that create resources submit their uploads
+// to the same queue under the driver's queue lock, so these calls take it too.
+static RenderingDeviceDriverVulkan *_queue_driver() {
+	RenderingDevice *rendering_device = RenderingDevice::get_singleton();
+	return rendering_device ? static_cast<RenderingDeviceDriverVulkan *>(rendering_device->get_device_driver()) : nullptr;
+}
+
+void OpenXRVulkanExtension::lock_queue() {
+	RenderingDeviceDriverVulkan *driver = _queue_driver();
+	if (driver && vulkan_queue_family_index != UINT32_MAX) {
+		driver->queue_lock(vulkan_queue_family_index, vulkan_queue_index);
+	}
+}
+
+void OpenXRVulkanExtension::unlock_queue() {
+	RenderingDeviceDriverVulkan *driver = _queue_driver();
+	if (driver && vulkan_queue_family_index != UINT32_MAX) {
+		driver->queue_unlock(vulkan_queue_family_index, vulkan_queue_index);
+	}
 }
 
 bool OpenXRVulkanExtension::use_fragment_density_offsets() {

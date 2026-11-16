@@ -218,4 +218,6 @@ public:
 	virtual bool create_projection_fov(const XrFovf p_fov, double p_z_near, double p_z_far, Projection &r_camera_matrix) = 0; // `create_projection_fov` creates a proper projection matrix based on asymmetric FOV data provided by OpenXR.
 	virtual RID get_texture(void *p_swapchain_graphics_data, int p_image_index) = 0; // `get_texture` returns a Godot texture RID for the current active texture in our swapchain.
 	virtual RID get_density_map(void *p_swapchain_graphics_data, int p_image_index) = 0; // `get_density_map` returns a Godot texture RID for the current active density map in our swapchain (if any).
+	virtual void lock_queue() {} // `lock_queue` keeps the renderer's other threads off the graphics queue during an OpenXR call that the graphics binding requires to be externally synchronized with it.
+	virtual void unlock_queue() {} // `unlock_queue` ends what `lock_queue` began.
 };
