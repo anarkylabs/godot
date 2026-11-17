@@ -1882,7 +1882,7 @@ RID RenderingDevice::texture_create_from_external_buffer(uint64_t p_buffer, Exte
 	_texture_make_mutable(&texture, RID());
 	// The producer owns the image until the first acquire.
 	texture.draw_tracker->usage = RDG::RESOURCE_USAGE_EXTERNAL_RELEASE;
-	texture_memory.add(driver->texture_get_allocation_size(texture.driver_id));
+	texture_memory += driver->texture_get_allocation_size(texture.driver_id);
 	return texture_owner.make_rid(texture);
 }
 
