@@ -1918,7 +1918,7 @@ Error TextureStorage::_texture_external_convert(RID p_texture, const Ref<Externa
 #ifdef TOOLS_ENABLED
 		tex->image_cache_2d.unref();
 #endif
-		decal_atlas_mark_draw_on_texture(p_texture);
+		decal_atlas_mark_dirty_on_texture(p_texture);
 		area_light_atlas_mark_dirty_on_texture(p_texture);
 	}
 	rd->free_rid(imported);
