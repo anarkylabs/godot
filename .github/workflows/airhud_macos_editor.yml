@@ -1,0 +1,71 @@
+name: 🍎 AirHUD macOS editor
+on:
+  push:
+    tags:
+      - "*-airhud.*"
+    branches:
+      - "airhud/**"
+    paths:
+      - .github/workflows/airhud_macos_editor.yml
+  workflow_dispatch:
+
+# The editor of this branch, built like the official macOS editor (production,
+# universal) and packaged as an ad-hoc signed Godot.app, for projects that use
+# this branch's API. Runs for each release tag and when this file changes;
+# attach the artifact to the release.
+env:
+  SCONS_FLAGS: >-
+    platform=macos
+    target=editor
+    production=yes
+    debug_symbols=no
+    module_text_server_fb_enabled=yes
+
+jobs:
+  build-editor:
+    runs-on: macos-26
+    name: Editor (universal)
+    timeout-minutes: 300
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Setup Python and SCons
+        uses: ./.github/actions/godot-deps
+
+      - name: Download pre-built ANGLE
+        run: python ./misc/scripts/install_angle.py
+
+      - name: Download pre-built AccessKit
+        run: python3 ./misc/scripts/install_accesskit.py
+
+      - name: Setup Vulkan SDK
+        run: sh misc/scripts/install_vulkan_sdk_macos.sh
+
+      - name: Compilation (x86_64)
+        run: scons ${{ env.SCONS_FLAGS }} arch=x86_64 vulkan=yes accesskit=yes angle=yes
+
+      - name: Compilation (arm64)
+        run: scons ${{ env.SCONS_FLAGS }} arch=arm64 vulkan=yes accesskit=yes angle=yes
+
+      - name: Package Godot.app
+        run: |
+          lipo -create bin/godot.macos.editor.x86_64 bin/godot.macos.editor.arm64 -output bin/godot.macos.editor.universal
+          strip bin/godot.macos.editor.universal
+          bin/godot.macos.editor.universal --version
+          cp -R misc/dist/macos_tools.app bin/Godot.app
+          mkdir -p bin/Godot.app/Contents/MacOS
+          cp bin/godot.macos.editor.universal bin/Godot.app/Contents/MacOS/Godot
+          chmod +x bin/Godot.app/Contents/MacOS/Godot
+          codesign --force --timestamp=none --sign - --deep bin/Godot.app
+          version=$(python3 -c 'import version; print(f"{version.major}.{version.minor}.{version.patch}-{version.status}")')
+          (cd bin && ditto -c -k --keepParent Godot.app "Godot_v${version}-airhud_macos.universal.zip")
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-editor
+          path: bin/Godot_v*-airhud_macos.universal.zip
+          if-no-files-found: error

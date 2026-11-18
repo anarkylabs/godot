@@ -1,9 +1,9 @@
 # AirHUD Godot
 
 This branch is Godot 4.7.2-stable with one fix and one feature, used by the
-AirHUD headset app (Meta Quest, Vulkan, OpenXR). Only its Android source
-template differs from the official release; the editor and other templates are
-the official ones.
+AirHUD headset app (Meta Quest, Vulkan, OpenXR). Its releases attach the
+Android source template and a macOS editor that knows the feature's API; the
+other templates are the official ones.
 
 ## The fix: OpenXR queue lock
 
@@ -58,5 +58,7 @@ conversion, about 0.13 ms a frame on average with 30 fps video at 72 Hz. Its
 
 `misc/airhud/build_android_template.sh` builds the arm64 release and debug
 engines with the official template flags and swaps them into the official
-`android_source.zip`; nothing else in it changes. Releases of this fork
-attach that template, the unstripped engines and their SHA256 sums.
+`android_source.zip`; nothing else in it changes. The `AirHUD macOS editor`
+workflow, run for each release tag, builds the universal production editor and
+packages it as an ad-hoc signed `Godot.app`. Releases of this fork attach the
+template, the unstripped engines, the editor and their SHA256 sums.
