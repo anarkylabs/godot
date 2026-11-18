@@ -46,9 +46,12 @@ void ExternalTexture::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_size", "size"), &ExternalTexture::set_size);
 	ClassDB::bind_method(D_METHOD("get_external_texture_id"), &ExternalTexture::get_external_texture_id);
 	ClassDB::bind_method(D_METHOD("set_external_buffer_id", "external_buffer_id"), &ExternalTexture::set_external_buffer_id);
+	ClassDB::bind_method(D_METHOD("set_generate_mipmaps", "enable"), &ExternalTexture::set_generate_mipmaps);
+	ClassDB::bind_method(D_METHOD("is_generating_mipmaps"), &ExternalTexture::is_generating_mipmaps);
 	ClassDB::bind_method(D_METHOD("submit_hardware_buffer", "buffer", "color_model", "color_range", "crop", "completion"), &ExternalTexture::submit_hardware_buffer, DEFVAL(COLOR_MODEL_AUTOMATIC), DEFVAL(COLOR_RANGE_AUTOMATIC), DEFVAL(Rect2i()), DEFVAL(Callable()));
 
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR2, "size"), "set_size", "get_size");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "generate_mipmaps"), "set_generate_mipmaps", "is_generating_mipmaps");
 
 	BIND_ENUM_CONSTANT(COLOR_MODEL_AUTOMATIC);
 	BIND_ENUM_CONSTANT(COLOR_MODEL_RGB);
@@ -101,12 +104,22 @@ void ExternalTexture::set_external_buffer_id(uint64_t p_external_buffer) {
 	}
 }
 
+void ExternalTexture::set_generate_mipmaps(bool p_enable) {
+	MutexLock lock(mutex);
+	generate_mipmaps = p_enable;
+}
+
+bool ExternalTexture::is_generating_mipmaps() const {
+	MutexLock lock(mutex);
+	return generate_mipmaps;
+}
+
 Error ExternalTexture::submit_hardware_buffer(uint64_t p_buffer, ColorModel p_color_model, ColorRange p_color_range, const Rect2i &p_crop, const Callable &p_completion) {
 	ERR_FAIL_INDEX_V(p_color_model, COLOR_MODEL_BT2020 + 1, ERR_INVALID_PARAMETER);
 	ERR_FAIL_INDEX_V(p_color_range, COLOR_RANGE_NARROW + 1, ERR_INVALID_PARAMETER);
 	MutexLock lock(mutex);
 	_ensure_created();
-	Error error = RenderingServer::get_singleton()->texture_external_submit(texture, p_buffer, RSE::ExternalTextureColorModel(p_color_model), RSE::ExternalTextureColorRange(p_color_range), p_crop, p_completion, callable_mp(this, &ExternalTexture::_hardware_buffer_changed));
+	Error error = RenderingServer::get_singleton()->texture_external_submit(texture, p_buffer, RSE::ExternalTextureColorModel(p_color_model), RSE::ExternalTextureColorRange(p_color_range), p_crop, generate_mipmaps, p_completion, callable_mp(this, &ExternalTexture::_hardware_buffer_changed));
 	if (error == OK && !using_hardware_buffer) {
 		resolved_size = Size2i(size);
 		using_hardware_buffer = true;

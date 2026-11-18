@@ -42,6 +42,7 @@ public:
 	RSE::ExternalTextureColorModel color_model = RSE::EXTERNAL_TEXTURE_COLOR_MODEL_AUTOMATIC;
 	RSE::ExternalTextureColorRange color_range = RSE::EXTERNAL_TEXTURE_COLOR_RANGE_AUTOMATIC;
 	Rect2i crop;
+	bool mipmaps = false;
 	Callable completion;
 	Callable changed;
 

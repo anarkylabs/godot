@@ -67,6 +67,7 @@ private:
 	Size2i resolved_size;
 	bool resolved_alpha = false;
 	bool using_hardware_buffer = false;
+	bool generate_mipmaps = false;
 
 	void _ensure_created() const;
 	void _hardware_buffer_changed(const Size2i &p_size, bool p_has_alpha);
@@ -81,6 +82,10 @@ public:
 	void set_size(const Size2 &p_size);
 
 	void set_external_buffer_id(uint64_t p_external_buffer);
+
+	void set_generate_mipmaps(bool p_enable);
+	bool is_generating_mipmaps() const;
+
 	Error submit_hardware_buffer(uint64_t p_buffer, ColorModel p_color_model = COLOR_MODEL_AUTOMATIC, ColorRange p_color_range = COLOR_RANGE_AUTOMATIC, const Rect2i &p_crop = Rect2i(), const Callable &p_completion = Callable());
 
 	virtual int get_width() const override;

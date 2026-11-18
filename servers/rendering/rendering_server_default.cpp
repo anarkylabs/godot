@@ -69,7 +69,7 @@ void RenderingServerDefault::_free(RID p_rid) {
 
 /* TEXTURE API */
 
-Error RenderingServerDefault::texture_external_submit(RID p_texture, uint64_t p_buffer, RSE::ExternalTextureColorModel p_color_model, RSE::ExternalTextureColorRange p_color_range, const Rect2i &p_crop, const Callable &p_completion, const Callable &p_changed) {
+Error RenderingServerDefault::texture_external_submit(RID p_texture, uint64_t p_buffer, RSE::ExternalTextureColorModel p_color_model, RSE::ExternalTextureColorRange p_color_range, const Rect2i &p_crop, bool p_mipmaps, const Callable &p_completion, const Callable &p_changed) {
 	ERR_FAIL_COND_V_MSG(p_buffer == 0, ERR_INVALID_PARAMETER, "The hardware buffer handle must be nonzero.");
 #ifdef RD_ENABLED
 	RenderingDevice *rd = RenderingDevice::get_singleton();
@@ -81,6 +81,7 @@ Error RenderingServerDefault::texture_external_submit(RID p_texture, uint64_t p_
 	submission->color_model = p_color_model;
 	submission->color_range = p_color_range;
 	submission->crop = p_crop;
+	submission->mipmaps = p_mipmaps;
 	submission->completion = p_completion;
 	submission->changed = p_changed;
 	redraw_request();

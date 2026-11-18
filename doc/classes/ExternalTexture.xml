@@ -5,7 +5,7 @@
 	</brief_description>
 	<description>
 		Displays the content of an external buffer provided by the platform.
-		When using the Forward+ or Mobile rendering methods, [method submit_hardware_buffer] converts Android hardware buffers into an RGBA texture without mipmaps. The texture is black until the first conversion and keeps the last converted frame afterwards. Transform metadata is ignored.
+		When using the Forward+ or Mobile rendering methods, [method submit_hardware_buffer] converts Android hardware buffers into an RGBA texture, with mipmaps when [member generate_mipmaps] is enabled. The texture is black until the first conversion and keeps the last converted frame afterwards. Transform metadata is ignored.
 		When using the Compatibility rendering method, use [method get_external_texture_id] or [method set_external_buffer_id]. This requires the [url=https://registry.khronos.org/OpenGL/extensions/OES/OES_EGL_image_external.txt]OES_EGL_image_external[/url] extension, and shaders must sample the texture with [code]samplerExternalOES[/code].
 		[b]Note:[/b] This is currently only supported in Android builds.
 	</description>
@@ -42,6 +42,9 @@
 		</method>
 	</methods>
 	<members>
+		<member name="generate_mipmaps" type="bool" setter="set_generate_mipmaps" getter="is_generating_mipmaps" default="false">
+			If [code]true[/code], each hardware buffer conversion also generates the texture's mipmaps on the GPU before the frame is drawn, so shaders can sample it with mipmap filtering. This costs extra GPU time per conversion and about a third more video memory. Takes effect from the next [method submit_hardware_buffer]. Only used by the Forward+ and Mobile rendering methods.
+		</member>
 		<member name="resource_local_to_scene" type="bool" setter="set_local_to_scene" getter="is_local_to_scene" overrides="Resource" default="false" />
 		<member name="size" type="Vector2" setter="set_size" getter="get_size" default="Vector2(256, 256)">
 			The texture size. Hardware buffers determine the size after the first conversion.

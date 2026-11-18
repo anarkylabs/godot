@@ -270,7 +270,8 @@ private:
 		HashMap<RID, Ref<ExternalTextureSubmission>> pending;
 	} external_textures;
 
-	void _texture_external_initialize(RID p_texture, int p_width, int p_height, bool p_clear);
+	void _texture_external_initialize(RID p_texture, int p_width, int p_height, bool p_clear, bool p_mipmaps = false);
+	void _texture_external_generate_mipmaps(const Texture *p_texture);
 	Error _texture_external_convert(RID p_texture, const Ref<ExternalTextureSubmission> &p_submission);
 	static void _texture_external_complete(const Ref<ExternalTextureSubmission> &p_submission, int p_status);
 

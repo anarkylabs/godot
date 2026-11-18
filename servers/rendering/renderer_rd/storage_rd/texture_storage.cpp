@@ -1309,7 +1309,8 @@ void TextureStorage::texture_external_initialize(RID p_texture, int p_width, int
 	ERR_FAIL_COND_MSG(p_external_buffer != 0, "External buffer IDs are only supported by the Compatibility renderer. Use ExternalTexture.submit_hardware_buffer() instead.");
 }
 
-void TextureStorage::_texture_external_initialize(RID p_texture, int p_width, int p_height, bool p_clear) {
+void TextureStorage::_texture_external_initialize(RID p_texture, int p_width, int p_height, bool p_clear, bool p_mipmaps) {
+	DEV_ASSERT(!(p_clear && p_mipmaps));
 	Texture initial = {};
 	initial.is_external = true;
 	initial.type = TYPE_2D;
@@ -1324,7 +1325,7 @@ void TextureStorage::_texture_external_initialize(RID p_texture, int p_width, in
 	initial.height_2d = p_height;
 	initial.depth = 1;
 	initial.layers = 1;
-	initial.mipmaps = 1;
+	initial.mipmaps = p_mipmaps ? Image::get_image_required_mipmaps(p_width, p_height, Image::FORMAT_RGBA8) + 1 : 1;
 	texture_owner.initialize_rid(p_texture, initial);
 	Texture *tex = texture_owner.get_or_null(p_texture);
 	RD *rd = RD::get_singleton();
@@ -1335,7 +1336,12 @@ void TextureStorage::_texture_external_initialize(RID p_texture, int p_width, in
 	format.format = tex->rd_format;
 	format.width = p_width;
 	format.height = p_height;
+	format.mipmaps = tex->mipmaps;
 	format.usage_bits = RD::TEXTURE_USAGE_SAMPLING_BIT | RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT | RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT;
+	if (tex->mipmaps > 1 && !CopyEffects::get_singleton()->get_raster_effects().has_flag(CopyEffects::RASTER_EFFECT_COPY)) {
+		// The compute downsample writes each level as a storage image.
+		format.usage_bits |= RD::TEXTURE_USAGE_STORAGE_BIT;
+	}
 	format.shareable_formats.push_back(tex->rd_format);
 	format.shareable_formats.push_back(tex->rd_format_srgb);
 	Vector<Vector<uint8_t>> data;
@@ -1353,6 +1359,27 @@ void TextureStorage::_texture_external_initialize(RID p_texture, int p_width, in
 		rd->free_rid(tex->rd_texture);
 		tex->rd_texture = RID();
 		ERR_FAIL_MSG("Could not create the external texture's sRGB sampling view.");
+	}
+	if (tex->mipmaps > 1) {
+		// A view of each level: the conversion draws into the first, and each
+		// further level is downsampled from the one before.
+		for (int i = 0; i < tex->mipmaps; i++) {
+			tex->cached_rd_slices.append(rd->texture_create_shared_from_slice(RD::TextureView(), tex->rd_texture, 0, i));
+		}
+	}
+}
+
+void TextureStorage::_texture_external_generate_mipmaps(const Texture *p_texture) {
+	CopyEffects *copy_effects = CopyEffects::get_singleton();
+	const bool raster = copy_effects->get_raster_effects().has_flag(CopyEffects::RASTER_EFFECT_COPY);
+	Size2i size(p_texture->width, p_texture->height);
+	for (int i = 1; i < p_texture->mipmaps; i++) {
+		size = Size2i(MAX(1, size.width >> 1), MAX(1, size.height >> 1));
+		if (raster) {
+			copy_effects->make_mipmap_raster(p_texture->cached_rd_slices[i - 1], p_texture->cached_rd_slices[i], size);
+		} else {
+			copy_effects->make_mipmap(p_texture->cached_rd_slices[i - 1], p_texture->cached_rd_slices[i], size);
+		}
 	}
 }
 
@@ -1844,9 +1871,9 @@ Error TextureStorage::_texture_external_convert(RID p_texture, const Ref<Externa
 	Texture *tex = texture_owner.get_or_null(p_texture);
 	RID replacement;
 	Texture *destination = tex;
-	if (tex->width != crop.size.width || tex->height != crop.size.height) {
+	if (tex->width != crop.size.width || tex->height != crop.size.height || (tex->mipmaps > 1) != p_submission->mipmaps) {
 		replacement = texture_allocate();
-		_texture_external_initialize(replacement, crop.size.width, crop.size.height, false);
+		_texture_external_initialize(replacement, crop.size.width, crop.size.height, false, p_submission->mipmaps);
 		destination = texture_owner.get_or_null(replacement);
 		if (destination->rd_texture.is_null()) {
 			rd->free_rid(imported);
@@ -1854,7 +1881,9 @@ Error TextureStorage::_texture_external_convert(RID p_texture, const Ref<Externa
 			return ERR_CANT_CREATE;
 		}
 	}
-	RID framebuffer = FramebufferCacheRD::get_singleton()->get_cache(destination->rd_texture);
+	// A framebuffer takes a single level, so a mipmapped texture is drawn
+	// through its first level's view.
+	RID framebuffer = FramebufferCacheRD::get_singleton()->get_cache(destination->mipmaps > 1 ? destination->cached_rd_slices[0] : destination->rd_texture);
 	ExternalTextures::Pipeline *conversion = external_textures.pipelines.getptr(sampler);
 	if (!conversion) {
 		Vector<uint8_t> bytecode = external_textures.shader.version_get_shader_bytecode(external_textures.shader_version, 0);
@@ -1901,6 +1930,10 @@ Error TextureStorage::_texture_external_convert(RID p_texture, const Ref<Externa
 		rd->draw_list_set_push_constant(draw_list, &push_constant, sizeof(push_constant));
 		rd->draw_list_draw(draw_list, false, 1, 3);
 		rd->draw_list_end();
+		if (destination->mipmaps > 1) {
+			RENDER_TIMESTAMP("External Texture Mipmaps");
+			_texture_external_generate_mipmaps(destination);
+		}
 	}
 	rd->draw_command_end_label();
 	rd->texture_external_release(imported);
