@@ -39,8 +39,20 @@ The app projects recorded drone video onto its map through it.
 
 On a Quest 3 (Adreno 740), 1080p decoder frames at 30 Hz converted with no
 errors over 2,800 submissions; handing a frame over costs about 0.4 ms of main
-thread and no measurable GPU time. The first conversion of a session builds its
-pipeline (one frame of about 19 ms).
+thread, and converting it about 0.21 ms of GPU. The first conversion of a
+session builds its pipeline (one frame of about 19 ms).
+
+`ExternalTexture.generate_mipmaps` (off by default) also gives the converted
+texture a mip chain, so a frame seen from afar can be sampled with mipmap
+filtering instead of shimmering. Godot's `RenderingDevice` has no image blit,
+so each level is drawn from the one before with the renderer's own mipmap pass
+(`CopyEffects::make_mipmap_raster` on the Mobile renderer, the compute version
+on Forward+), through views of each level kept with the texture; the render
+graph orders the passes and their barriers before any view samples the frame.
+The crop is applied by the conversion, so no level sees padding rows.
+On the Quest 3, the mip chain of a 1080p frame costs about 0.31 ms of GPU per
+conversion, about 0.13 ms a frame on average with 30 fps video at 72 Hz. Its
+11 levels make each texture 11.1 MB instead of 8.3 MB.
 
 ## Building
 
