@@ -23,7 +23,7 @@ env:
 
 jobs:
   build-editor:
-    runs-on: macos-26
+    runs-on: macos-latest
     name: Editor (universal)
     timeout-minutes: 300
     steps:
