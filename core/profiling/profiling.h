@@ -178,6 +178,70 @@ struct PerfettoScriptTracer {
 void godot_init_profiler();
 void godot_cleanup_profiler();
 
+#elif defined(GODOT_USE_ATRACE)
+// Zones as Android ATrace sections. A Meta Quest app cannot register with the
+// system Perfetto service, so the perfetto backend records nothing there; a
+// system trace that lists the app in atrace_apps shows these sections on the
+// thread's track. Sections begin only while a trace is recording.
+
+#include "core/string/string_name.h"
+#include "core/string/ustring.h"
+
+#include <android/trace.h>
+
+struct GodotAtraceZone {
+	bool open = false;
+
+	_FORCE_INLINE_ GodotAtraceZone() {}
+	_FORCE_INLINE_ explicit GodotAtraceZone(const char *p_name) { begin(p_name); }
+	_FORCE_INLINE_ void begin(const char *p_name) {
+		open = ATrace_isEnabled();
+		if (open) {
+			ATrace_beginSection(p_name);
+		}
+	}
+	_FORCE_INLINE_ void _end_now() {
+		if (open) {
+			ATrace_endSection();
+			open = false;
+		}
+	}
+	_FORCE_INLINE_ ~GodotAtraceZone() { _end_now(); }
+};
+
+// A script function (`name file:line`) or a native method a script calls.
+struct GodotAtraceScriptZone {
+	bool open = false;
+
+	GodotAtraceScriptZone(const StringName &p_file, const StringName &p_name, int p_line) {
+		open = ATrace_isEnabled();
+		if (open) {
+			const String label = String(p_name) + " " + String(p_file).get_file() + ":" + itos(p_line);
+			ATrace_beginSection(label.utf8().get_data());
+		}
+	}
+	~GodotAtraceScriptZone() {
+		if (open) {
+			ATrace_endSection();
+		}
+	}
+};
+
+#define GodotProfileFrameMark
+#define GodotProfileZone(m_zone_name) GodotAtraceZone _GD_VARNAME_CONCAT_(__godot_atrace_zone_, _, __COUNTER__)(m_zone_name);
+#define GodotProfileZoneGroupedFirst(m_group_name, m_zone_name) GodotAtraceZone __godot_atrace_zone_##m_group_name(m_zone_name)
+#define GodotProfileZoneGroupedEndEarly(m_group_name, m_zone_name) __godot_atrace_zone_##m_group_name._end_now()
+#define GodotProfileZoneGrouped(m_group_name, m_zone_name) \
+	__godot_atrace_zone_##m_group_name._end_now(); \
+	__godot_atrace_zone_##m_group_name.begin(m_zone_name);
+#define GodotProfileZoneScript(m_ptr, m_file, m_function, m_name, m_line) GodotAtraceScriptZone __godot_atrace_script_zone(m_file, m_name, m_line);
+#define GodotProfileZoneScriptSystemCall(m_ptr, m_file, m_function, m_name, m_line) GodotAtraceScriptZone __godot_atrace_script_call_zone(m_file, m_name, m_line);
+#define GodotProfileAlloc(m_ptr, m_size)
+#define GodotProfileFree(m_ptr)
+
+void godot_init_profiler();
+void godot_cleanup_profiler();
+
 #elif defined(GODOT_USE_INSTRUMENTS)
 
 #include <os/log.h>

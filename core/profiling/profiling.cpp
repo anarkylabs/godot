@@ -210,6 +210,14 @@ void godot_cleanup_profiler() {
 	// Stub
 }
 
+#elif defined(GODOT_USE_ATRACE)
+void godot_init_profiler() {
+	// ATrace needs no setup: sections go to the system trace when it records.
+}
+
+void godot_cleanup_profiler() {
+}
+
 #elif defined(GODOT_USE_INSTRUMENTS)
 
 namespace apple::instruments {

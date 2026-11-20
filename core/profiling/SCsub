@@ -77,6 +77,10 @@ if env["profiler"]:
             env_tracy.Append(CPPDEFINES=["TRACY_ON_DEMAND"])
         env_tracy.disable_warnings()
         env_tracy.add_source_files(env.core_sources, str((profiler_path / "TracyClient.cpp").absolute()))
+    elif env["profiler"] == "atrace":
+        if env["platform"] != "android":
+            print("The atrace profiler is only available on Android. Aborting.")
+            Exit(255)
     elif env["profiler"] == "perfetto":
         if env["profiler_path"]:
             profiler_path = find_perfetto_path(pathlib.Path(env["profiler_path"]))
